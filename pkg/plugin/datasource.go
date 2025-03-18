@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/databricks/databricks-sdk-go"
+	"github.com/databricks/databricks-sdk-go/service/jobs"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
@@ -107,6 +109,31 @@ func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequ
 		res.Status = backend.HealthStatusError
 		res.Message = "Authentication is missing"
 		return res, nil
+	}
+
+	// Perform a health check by sending a request to the Databricks API.
+	// If the request fails, set res.Status to backend.HealthStatusError.
+	// If the request is successful, set res.Status to backend.HealthStatusOk.
+	// res.Message can be used to provide additional information about the health check.
+	// For example, if the request fails, res.Message can contain the error message.
+	// If the request is successful, res.Message can contain information about the response.
+	// If the health check is successful, res.Status should be set to backend.HealthStatusOk.
+	// If the health check fails, res.Status should be set to backend.HealthStatusError.
+
+	dbxConfig := databricks.Config{
+		Host:         config.Workspace,
+		ClientID:     config.Secrets.ClientId,
+		ClientSecret: config.Secrets.ClientSecret,
+	}
+
+	w := databricks.Must(databricks.NewWorkspaceClient(&dbxConfig))
+	_, err = w.Jobs.ListAll(context.Background(), jobs.ListJobsRequest{})
+
+	if err != nil {
+		return &backend.CheckHealthResult{
+			Status:  backend.HealthStatusError,
+			Message: fmt.Sprintf("Error: %v", err),
+		}, nil
 	}
 
 	return &backend.CheckHealthResult{
