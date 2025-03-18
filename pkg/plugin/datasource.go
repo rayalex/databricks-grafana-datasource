@@ -103,9 +103,9 @@ func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequ
 		return res, nil
 	}
 
-	if config.Secrets.ApiKey == "" {
+	if config.Secrets.ClientId == "" || config.Secrets.ClientSecret == "" {
 		res.Status = backend.HealthStatusError
-		res.Message = "API key is missing"
+		res.Message = "Authentication is missing"
 		return res, nil
 	}
 

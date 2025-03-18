@@ -9,61 +9,99 @@ export function ConfigEditor(props: Props) {
   const { onOptionsChange, options } = props;
   const { jsonData, secureJsonFields, secureJsonData } = options;
 
-  const onPathChange = (event: ChangeEvent<HTMLInputElement>) => {
+  // TODO: both should be able to be updated together
+  const onWorkspaceChange = (event: ChangeEvent<HTMLInputElement>) => {
     onOptionsChange({
       ...options,
       jsonData: {
         ...jsonData,
-        path: event.target.value,
+        workspace: event.target.value,
       },
     });
   };
 
   // Secure field (only sent to the backend)
-  const onAPIKeyChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const onClientIdChange = (event: ChangeEvent<HTMLInputElement>) => {
     onOptionsChange({
       ...options,
       secureJsonData: {
-        apiKey: event.target.value,
+        clientId: event.target.value,
       },
     });
   };
 
-  const onResetAPIKey = () => {
+  // Secure field (only sent to the backend)
+  const onClientSecretChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onOptionsChange({
+      ...options,
+      secureJsonData: {
+        clientSecret: event.target.value,
+      },
+    });
+  };
+
+  const onResetClientId = () => {
     onOptionsChange({
       ...options,
       secureJsonFields: {
         ...options.secureJsonFields,
-        apiKey: false,
+        clientId: false,
       },
       secureJsonData: {
         ...options.secureJsonData,
-        apiKey: '',
+        clientId: '',
+      },
+    });
+  };
+
+  const onResetClientSecret = () => {
+    onOptionsChange({
+      ...options,
+      secureJsonFields: {
+        ...options.secureJsonFields,
+        clientSecret: false,
+      },
+      secureJsonData: {
+        ...options.secureJsonData,
+        clientSecret: '',
       },
     });
   };
 
   return (
     <>
-      <InlineField label="Path" labelWidth={14} interactive tooltip={'Json field returned to frontend'}>
+      <InlineField label="Workspace URL" labelWidth={20} interactive tooltip={'Json field returned to frontend'}>
         <Input
-          id="config-editor-path"
-          onChange={onPathChange}
-          value={jsonData.path}
-          placeholder="Enter the path, e.g. /api/v1"
+          id="config-editor-workspace"
+          onChange={onWorkspaceChange}
+          value={jsonData.workspace}
+          placeholder="Enter the workspace URL, e.g. https://adb-xxx.0.azuredatabricks.net"
           width={40}
         />
       </InlineField>
-      <InlineField label="API Key" labelWidth={14} interactive tooltip={'Secure json field (backend only)'}>
+      <InlineField label="Client ID" labelWidth={20} interactive tooltip={'Secure json field (backend only)'}>
         <SecretInput
           required
-          id="config-editor-api-key"
-          isConfigured={secureJsonFields.apiKey}
-          value={secureJsonData?.apiKey}
-          placeholder="Enter your API key"
+          id="config-editor-client-id"
+          isConfigured={secureJsonFields.clientId}
+          value={secureJsonData?.clientId}
+          placeholder="Enter your Databricks Client Id"
           width={40}
-          onReset={onResetAPIKey}
-          onChange={onAPIKeyChange}
+          onReset={onResetClientId}
+          onChange={onClientIdChange}
+        />
+      </InlineField>
+
+      <InlineField label="Client Secret" labelWidth={20} interactive tooltip={'Secure json field (backend only)'}>
+        <SecretInput
+          required
+          id="config-editor-client-secret"
+          isConfigured={secureJsonFields.clientSecret}
+          value={secureJsonData?.clientSecret}
+          placeholder="Enter your Databricks Client Secret"
+          width={40}
+          onReset={onResetClientSecret}
+          onChange={onClientSecretChange}
         />
       </InlineField>
     </>
