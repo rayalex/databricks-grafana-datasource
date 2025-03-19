@@ -2,22 +2,17 @@ import { DataSourceJsonData } from '@grafana/data';
 import { DataQuery } from '@grafana/schema';
 
 export interface MyQuery extends DataQuery {
-  queryText?: string;
-  constant: number;
+  resourceType: string;
+  resourceParams: ResourceParams;
 }
 
 export const DEFAULT_QUERY: Partial<MyQuery> = {
-  constant: 6.5,
+  resourceType: "job_runs",
 };
 
-export interface DataPoint {
-  Time: number;
-  Value: number;
-}
+export type ResourceParams = JobRunQueryParams;
 
-export interface DataSourceResponse {
-  datapoints: DataPoint[];
-}
+export interface JobRunQueryParams { }
 
 /**
  * These are options configured for each DataSource instance

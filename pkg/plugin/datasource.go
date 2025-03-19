@@ -10,6 +10,7 @@ import (
 	"github.com/databricks/databricks-sdk-go/service/jobs"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/rayalex/databricks/pkg/models"
 )
@@ -26,13 +27,17 @@ var (
 )
 
 // NewDatasource creates a new datasource instance.
-func NewDatasource(_ context.Context, _ backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
-	return &Datasource{}, nil
+func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+	return &Datasource{
+		settings: settings,
+	}, nil
 }
 
 // Datasource is an example datasource which can respond to data queries, reports
 // its health and has streaming skills.
-type Datasource struct{}
+type Datasource struct {
+	settings backend.DataSourceInstanceSettings
+}
 
 // Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
 // created. As soon as datasource settings change detected by SDK old datasource instance will
@@ -61,12 +66,15 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	return response, nil
 }
 
-type queryModel struct{}
+type queryModel struct {
+	RawQuery       string          `json:"queryText,omitempty"`
+	ResourceType   string          `json:"resourceType"`
+	ResourceParams json.RawMessage `json:"resourceParams,omitempty"`
+}
 
-func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
-	var response backend.DataResponse
+const RESOURCE_TYPE_JOB_RUNS = "job_runs"
 
-	// Unmarshal the JSON into our queryModel.
+func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
 	var qm queryModel
 
 	err := json.Unmarshal(query.JSON, &qm)
@@ -74,20 +82,71 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
 
-	// create data frame response.
-	// For an overview on data frames and how grafana handles them:
-	// https://grafana.com/developers/plugin-tools/introduction/data-frames
-	frame := data.NewFrame("response")
+	fmt.Printf("Query Model: %v\n", qm)
 
-	// add fields.
-	frame.Fields = append(frame.Fields,
-		data.NewField("time", nil, []time.Time{query.TimeRange.From, query.TimeRange.To}),
-		data.NewField("values", nil, []int64{10, 20}),
+	switch qm.ResourceType {
+	case RESOURCE_TYPE_JOB_RUNS:
+		return d.queryJobRuns(ctx, pCtx, query, qm)
+	default:
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("Unknown resource kind: %s", qm.ResourceType))
+	}
+}
+
+func (d *Datasource) queryJobRuns(ctx context.Context, pCtx backend.PluginContext, query backend.DataQuery, qm queryModel) backend.DataResponse {
+	var response backend.DataResponse
+	config, err := models.LoadPluginSettings(d.settings)
+	if err != nil {
+		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("Load plugin settings: %v", err))
+	}
+
+	dbxConfig := databricks.Config{
+		Host:         config.Workspace,
+		ClientID:     config.Secrets.ClientId,
+		ClientSecret: config.Secrets.ClientSecret,
+	}
+
+	// TODO: Implement the query filtering + pagination
+	w := databricks.Must(databricks.NewWorkspaceClient(&dbxConfig))
+	all, err := w.Jobs.ListRunsAll(context.Background(), jobs.ListRunsRequest{
+		Limit: 25,
+	})
+
+	// print some debug info on the response
+	log.DefaultLogger.Info("Job Runs: %v\n", all)
+	log.DefaultLogger.Info("Returned rows: %v\n", len(all))
+
+	if err != nil {
+		response.Error = err
+		return response
+	}
+	// TODO: check if Start Time should be the first column
+	frame := data.NewFrame("Databricks Job Runs",
+		data.NewField("Job ID", nil, []int64{}),
+		data.NewField("Run ID", nil, []int64{}),
+		data.NewField("Attempt Number", nil, []int32{}),
+		data.NewField("Status", nil, []string{}),
+		data.NewField("Start Time", nil, []time.Time{}),
+		data.NewField("End Time", nil, []time.Time{}),
+		data.NewField("Queue Duration (seconds)", nil, []int64{}),
+		data.NewField("Run Duration (seconds)", nil, []int64{}),
+		data.NewField("Run URL", nil, []string{}),
 	)
 
-	// add the frames to the response.
-	response.Frames = append(response.Frames, frame)
+	for _, run := range all {
+		frame.AppendRow(
+			run.JobId,
+			run.RunId,
+			int32(run.AttemptNumber),
+			string(run.Status.State),
+			time.UnixMilli(run.StartTime),
+			time.UnixMilli(run.EndTime),
+			run.QueueDuration,
+			run.RunDuration,
+			run.RunPageUrl,
+		)
+	}
 
+	response.Frames = append(response.Frames, frame)
 	return response
 }
 
