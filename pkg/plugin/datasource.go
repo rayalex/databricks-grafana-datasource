@@ -111,15 +111,6 @@ func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequ
 		return res, nil
 	}
 
-	// Perform a health check by sending a request to the Databricks API.
-	// If the request fails, set res.Status to backend.HealthStatusError.
-	// If the request is successful, set res.Status to backend.HealthStatusOk.
-	// res.Message can be used to provide additional information about the health check.
-	// For example, if the request fails, res.Message can contain the error message.
-	// If the request is successful, res.Message can contain information about the response.
-	// If the health check is successful, res.Status should be set to backend.HealthStatusOk.
-	// If the health check fails, res.Status should be set to backend.HealthStatusError.
-
 	dbxConfig := databricks.Config{
 		Host:         config.Workspace,
 		ClientID:     config.Secrets.ClientId,
@@ -127,7 +118,9 @@ func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequ
 	}
 
 	w := databricks.Must(databricks.NewWorkspaceClient(&dbxConfig))
-	_, err = w.Jobs.ListAll(context.Background(), jobs.ListJobsRequest{})
+	_, err = w.Jobs.ListAll(context.Background(), jobs.ListJobsRequest{
+		Limit: 1,
+	})
 
 	if err != nil {
 		return &backend.CheckHealthResult{

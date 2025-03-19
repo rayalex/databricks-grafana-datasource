@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
   "type": "datasource",
-  "name": "Databricks",
+  "name": "Databricks Community",
   "id": "rayalex-databricks-datasource",
   "metrics": true,
   "backend": true,
@@ -9,7 +9,7 @@
   "info": {
     "description": "",
     "author": {
-      "name": "Rayalex"
+      "name": "Aleksandar Dragojevic"
     },
     "keywords": ["datasource"],
     "logos": {
