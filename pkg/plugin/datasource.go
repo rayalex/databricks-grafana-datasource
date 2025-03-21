@@ -1,16 +1,17 @@
 package plugin
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/databricks/databricks-sdk-go"
 	"github.com/databricks/databricks-sdk-go/service/jobs"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
-	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/rayalex/databricks/pkg/models"
 )
@@ -98,8 +99,8 @@ func (d *Datasource) queryJobRuns(ctx context.Context, pCtx backend.PluginContex
 	frame := data.NewFrame("Databricks Job Runs",
 		data.NewField("Start Time", nil, []time.Time{}),
 		data.NewField("End Time", nil, []time.Time{}),
-		data.NewField("Job ID", nil, []int64{}),
-		data.NewField("Run ID", nil, []int64{}),
+		data.NewField("Job ID", nil, []string{}),
+		data.NewField("Run ID", nil, []string{}),
 		data.NewField("Attempt Number", nil, []int32{}),
 		data.NewField("Status", nil, []string{}),
 		data.NewField("Queue Duration (seconds)", nil, []int64{}),
@@ -107,7 +108,7 @@ func (d *Datasource) queryJobRuns(ctx context.Context, pCtx backend.PluginContex
 		data.NewField("Run URL", nil, []string{}),
 	)
 
-	// TODO: Implement the query filtering + pagination
+	// TODO: Implement the query filtering
 	w, err := d.getDatabricksClient(ctx, pCtx)
 	if err != nil {
 		response.Error = err
@@ -115,24 +116,40 @@ func (d *Datasource) queryJobRuns(ctx context.Context, pCtx backend.PluginContex
 	}
 
 	// fetch the initial set of job runs
-	all, err := w.Jobs.ListRunsAll(context.Background(), jobs.ListRunsRequest{
+	jobRunsIter := w.Jobs.ListRuns(context.Background(), jobs.ListRunsRequest{
 		Limit: 25, // 25 is the max limit for this API - per page
 	})
 
-	log.DefaultLogger.Debug("Job Runs: %v\n", all)
-	log.DefaultLogger.Debug("Returned rows: %v\n", len(all))
+	const maxItems = 200
+	var allJobs = []jobs.BaseRun{}
+	var currentItems = 0
 
-	if err != nil {
-		response.Error = err
-		return response
+	for {
+		if jobRunsIter.HasNext(context.Background()) && currentItems < maxItems {
+			jobRun, err := jobRunsIter.Next(context.Background())
+			if err != nil {
+				response.Error = err
+				return response
+			}
+
+			allJobs = append(allJobs, jobRun)
+			currentItems++
+		} else {
+			break
+		}
 	}
 
-	for _, run := range all {
+	// sort rows ascending by StartTime
+	slices.SortFunc(allJobs, func(i, j jobs.BaseRun) int {
+		return cmp.Compare(i.StartTime, j.StartTime)
+	})
+
+	for _, run := range allJobs {
 		frame.AppendRow(
 			time.UnixMilli(run.StartTime),
 			time.UnixMilli(run.EndTime),
-			run.JobId,
-			run.RunId,
+			fmt.Sprintf("%d", run.JobId),
+			fmt.Sprintf("%d", run.RunId),
 			int32(run.AttemptNumber),
 			string(run.Status.State),
 			run.QueueDuration,
@@ -184,7 +201,7 @@ func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequ
 func (d *Datasource) getDatabricksClient(ctx context.Context, pCtx backend.PluginContext) (*databricks.WorkspaceClient, error) {
 	config, err := models.LoadPluginSettings(d.settings)
 	if err != nil {
-		return nil, fmt.Errorf("Load plugin settings: %v", err)
+		return nil, fmt.Errorf("load plugin settings: %v", err)
 	}
 
 	dbxConfig := databricks.Config{
