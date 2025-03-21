@@ -94,52 +94,47 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 
 func (d *Datasource) queryJobRuns(ctx context.Context, pCtx backend.PluginContext, query backend.DataQuery, qm queryModel) backend.DataResponse {
 	var response backend.DataResponse
-	config, err := models.LoadPluginSettings(d.settings)
-	if err != nil {
-		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("Load plugin settings: %v", err))
-	}
 
-	dbxConfig := databricks.Config{
-		Host:         config.Workspace,
-		ClientID:     config.Secrets.ClientId,
-		ClientSecret: config.Secrets.ClientSecret,
-	}
-
-	// TODO: Implement the query filtering + pagination
-	w := databricks.Must(databricks.NewWorkspaceClient(&dbxConfig))
-	all, err := w.Jobs.ListRunsAll(context.Background(), jobs.ListRunsRequest{
-		Limit: 25,
-	})
-
-	// print some debug info on the response
-	log.DefaultLogger.Info("Job Runs: %v\n", all)
-	log.DefaultLogger.Info("Returned rows: %v\n", len(all))
-
-	if err != nil {
-		response.Error = err
-		return response
-	}
-	// TODO: check if Start Time should be the first column
 	frame := data.NewFrame("Databricks Job Runs",
+		data.NewField("Start Time", nil, []time.Time{}),
+		data.NewField("End Time", nil, []time.Time{}),
 		data.NewField("Job ID", nil, []int64{}),
 		data.NewField("Run ID", nil, []int64{}),
 		data.NewField("Attempt Number", nil, []int32{}),
 		data.NewField("Status", nil, []string{}),
-		data.NewField("Start Time", nil, []time.Time{}),
-		data.NewField("End Time", nil, []time.Time{}),
 		data.NewField("Queue Duration (seconds)", nil, []int64{}),
 		data.NewField("Run Duration (seconds)", nil, []int64{}),
 		data.NewField("Run URL", nil, []string{}),
 	)
 
+	// TODO: Implement the query filtering + pagination
+	w, err := d.getDatabricksClient(ctx, pCtx)
+	if err != nil {
+		response.Error = err
+		return response
+	}
+
+	// fetch the initial set of job runs
+	all, err := w.Jobs.ListRunsAll(context.Background(), jobs.ListRunsRequest{
+		Limit: 25, // 25 is the max limit for this API - per page
+	})
+
+	log.DefaultLogger.Debug("Job Runs: %v\n", all)
+	log.DefaultLogger.Debug("Returned rows: %v\n", len(all))
+
+	if err != nil {
+		response.Error = err
+		return response
+	}
+
 	for _, run := range all {
 		frame.AppendRow(
+			time.UnixMilli(run.StartTime),
+			time.UnixMilli(run.EndTime),
 			run.JobId,
 			run.RunId,
 			int32(run.AttemptNumber),
 			string(run.Status.State),
-			time.UnixMilli(run.StartTime),
-			time.UnixMilli(run.EndTime),
 			run.QueueDuration,
 			run.RunDuration,
 			run.RunPageUrl,
@@ -170,16 +165,8 @@ func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequ
 		return res, nil
 	}
 
-	dbxConfig := databricks.Config{
-		Host:         config.Workspace,
-		ClientID:     config.Secrets.ClientId,
-		ClientSecret: config.Secrets.ClientSecret,
-	}
-
-	w := databricks.Must(databricks.NewWorkspaceClient(&dbxConfig))
-	_, err = w.Jobs.ListAll(context.Background(), jobs.ListJobsRequest{
-		Limit: 1,
-	})
+	w, _ := d.getDatabricksClient(context.Background(), req.PluginContext)
+	_, err = w.CurrentUser.Me(context.Background())
 
 	if err != nil {
 		return &backend.CheckHealthResult{
@@ -192,4 +179,19 @@ func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequ
 		Status:  backend.HealthStatusOk,
 		Message: "Data source is working",
 	}, nil
+}
+
+func (d *Datasource) getDatabricksClient(ctx context.Context, pCtx backend.PluginContext) (*databricks.WorkspaceClient, error) {
+	config, err := models.LoadPluginSettings(d.settings)
+	if err != nil {
+		return nil, fmt.Errorf("Load plugin settings: %v", err)
+	}
+
+	dbxConfig := databricks.Config{
+		Host:         config.Workspace,
+		ClientID:     config.Secrets.ClientId,
+		ClientSecret: config.Secrets.ClientSecret,
+	}
+
+	return databricks.Must(databricks.NewWorkspaceClient(&dbxConfig)), nil
 }
