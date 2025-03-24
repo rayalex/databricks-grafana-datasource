@@ -19,7 +19,7 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
   }
 
   filterQuery(query: MyQuery): boolean {
-    // if no query has been provided, prevent the query from being executed
+    // if no resource has been provided, prevent the query from being executed
     return !!query.resourceType;
   }
 }

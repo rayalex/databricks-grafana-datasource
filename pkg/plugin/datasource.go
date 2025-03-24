@@ -12,6 +12,7 @@ import (
 	"github.com/databricks/databricks-sdk-go/service/jobs"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/rayalex/databricks/pkg/models"
 )
@@ -83,8 +84,6 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
 
-	fmt.Printf("Query Model: %v\n", qm)
-
 	switch qm.ResourceType {
 	case RESOURCE_TYPE_JOB_RUNS:
 		return d.queryJobRuns(ctx, pCtx, query, qm)
@@ -101,6 +100,8 @@ func (d *Datasource) queryJobRuns(ctx context.Context, pCtx backend.PluginContex
 		data.NewField("End Time", nil, []time.Time{}),
 		data.NewField("Job ID", nil, []string{}),
 		data.NewField("Run ID", nil, []string{}),
+		data.NewField("Run Name", nil, []string{}),
+		data.NewField("Description", nil, []string{}),
 		data.NewField("Attempt Number", nil, []int32{}),
 		data.NewField("Status", nil, []string{}),
 		data.NewField("Queue Duration (seconds)", nil, []int64{}),
@@ -116,9 +117,23 @@ func (d *Datasource) queryJobRuns(ctx context.Context, pCtx backend.PluginContex
 	}
 
 	// fetch the initial set of job runs
-	jobRunsIter := w.Jobs.ListRuns(context.Background(), jobs.ListRunsRequest{
+	request := jobs.ListRunsRequest{
 		Limit: 25, // 25 is the max limit for this API - per page
-	})
+	}
+
+	// apply time range filter, if set
+	if !query.TimeRange.From.IsZero() && !query.TimeRange.To.IsZero() {
+		request.StartTimeFrom = query.TimeRange.From.UnixMilli()
+		request.StartTimeTo = query.TimeRange.To.UnixMilli()
+	}
+
+	log.DefaultLogger.Info("Querying job runs",
+		"limit", request.Limit,
+		"start_time_from", time.UnixMilli(request.StartTimeFrom),
+		"start_time_to", time.UnixMilli(request.StartTimeTo),
+	)
+
+	jobRunsIter := w.Jobs.ListRuns(context.Background(), request)
 
 	const maxItems = 200
 	var allJobs = []jobs.BaseRun{}
@@ -150,6 +165,8 @@ func (d *Datasource) queryJobRuns(ctx context.Context, pCtx backend.PluginContex
 			time.UnixMilli(run.EndTime),
 			fmt.Sprintf("%d", run.JobId),
 			fmt.Sprintf("%d", run.RunId),
+			run.RunName,
+			run.Description,
 			int32(run.AttemptNumber),
 			string(run.Status.State),
 			run.QueueDuration,

@@ -12,7 +12,12 @@ export const DEFAULT_QUERY: Partial<MyQuery> = {
 
 export type ResourceParams = JobRunQueryParams;
 
-export interface JobRunQueryParams { }
+export interface JobRunQueryParams { 
+  jobId?: string;
+  activeOnly?: boolean;
+  completedOnly?: boolean;
+  runType?: "JOB_RUN" | "WORKFLOW_RUN" | "SUBMIT_RUN";
+}
 
 /**
  * These are options configured for each DataSource instance
