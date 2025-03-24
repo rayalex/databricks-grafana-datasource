@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/databricks/databricks-sdk-go"
@@ -74,6 +75,13 @@ type queryModel struct {
 	ResourceParams json.RawMessage `json:"resourceParams,omitempty"`
 }
 
+type jobRunParams struct {
+	JobID         string `json:"jobId,omitempty"`
+	ActiveOnly    bool   `json:"activeOnly,omitempty"`
+	CompletedOnly bool   `json:"completedOnly,omitempty"`
+	RunType       string `json:"runType,omitempty"`
+}
+
 const RESOURCE_TYPE_JOB_RUNS = "job_runs"
 
 func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
@@ -109,6 +117,15 @@ func (d *Datasource) queryJobRuns(ctx context.Context, pCtx backend.PluginContex
 		data.NewField("Run URL", nil, []string{}),
 	)
 
+	// unmarshall the query params
+	var params jobRunParams
+	if qm.ResourceParams != nil {
+		if err := json.Unmarshal(qm.ResourceParams, &params); err != nil {
+			log.DefaultLogger.Error("Failed to unmarshal query params", "error", err)
+			return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("Failed to unmarshal query params: %v", err))
+		}
+	}
+
 	// TODO: Implement the query filtering
 	w, err := d.getDatabricksClient(ctx, pCtx)
 	if err != nil {
@@ -121,16 +138,40 @@ func (d *Datasource) queryJobRuns(ctx context.Context, pCtx backend.PluginContex
 		Limit: 25, // 25 is the max limit for this API - per page
 	}
 
+	// apply JobId filter, if set
+	if params.JobID != "" {
+		jobId, err := strconv.ParseInt(params.JobID, 10, 64)
+		if err != nil {
+			response.Error = err
+			return response
+		}
+
+		request.JobId = jobId
+	}
+
 	// apply time range filter, if set
 	if !query.TimeRange.From.IsZero() && !query.TimeRange.To.IsZero() {
 		request.StartTimeFrom = query.TimeRange.From.UnixMilli()
 		request.StartTimeTo = query.TimeRange.To.UnixMilli()
 	}
 
+	// apply status filters
+	request.ActiveOnly = params.ActiveOnly
+	request.CompletedOnly = params.CompletedOnly
+
+	// Apply run type filter
+	if params.RunType != "" {
+		request.RunType = jobs.RunType(params.RunType)
+	}
+
 	log.DefaultLogger.Info("Querying job runs",
 		"limit", request.Limit,
 		"start_time_from", time.UnixMilli(request.StartTimeFrom),
 		"start_time_to", time.UnixMilli(request.StartTimeTo),
+		"job_id", request.JobId,
+		"active_only", request.ActiveOnly,
+		"completed_only", request.CompletedOnly,
+		"run_type", request.RunType,
 	)
 
 	jobRunsIter := w.Jobs.ListRuns(context.Background(), request)
