@@ -29,6 +29,13 @@ var (
 	_ instancemgmt.InstanceDisposer = (*Datasource)(nil)
 )
 
+const (
+	resourceTypeJobRuns         = "job_runs"
+	resourceTypePipelineUpdates = "pipeline_updates"
+	jobRunPageLimit             = 25
+	pipelineUpdatePageLimit     = 25
+)
+
 // NewDatasource creates a new datasource instance.
 func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
 	return &Datasource{
@@ -82,8 +89,6 @@ type jobRunParams struct {
 	RunType       string `json:"runType,omitempty"`
 }
 
-const RESOURCE_TYPE_JOB_RUNS = "job_runs"
-
 func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
 	var qm queryModel
 
@@ -93,10 +98,10 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 	}
 
 	switch qm.ResourceType {
-	case RESOURCE_TYPE_JOB_RUNS:
+	case resourceTypeJobRuns:
 		return d.queryJobRuns(ctx, pCtx, query, qm)
 	default:
-		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("Unknown resource kind: %s", qm.ResourceType))
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("unknown resource kind: %s", qm.ResourceType))
 	}
 }
 
@@ -121,8 +126,8 @@ func (d *Datasource) queryJobRuns(ctx context.Context, pCtx backend.PluginContex
 	var params jobRunParams
 	if qm.ResourceParams != nil {
 		if err := json.Unmarshal(qm.ResourceParams, &params); err != nil {
-			log.DefaultLogger.Error("Failed to unmarshal query params", "error", err)
-			return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("Failed to unmarshal query params: %v", err))
+			log.DefaultLogger.Error("failed to unmarshal query params", "error", err)
+			return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to unmarshal query params: %v", err))
 		}
 	}
 
@@ -174,33 +179,20 @@ func (d *Datasource) queryJobRuns(ctx context.Context, pCtx backend.PluginContex
 		"run_type", request.RunType,
 	)
 
-	jobRunsIter := w.Jobs.ListRuns(context.Background(), request)
+	jobsService := &workspaceClientWrapper{client: w}
+	jobRuns, err := fetchJobRuns(ctx, jobsService, request, jobRunPageLimit)
 
-	const maxItems = 200
-	var allJobs = []jobs.BaseRun{}
-	var currentItems = 0
-
-	for {
-		if jobRunsIter.HasNext(context.Background()) && currentItems < maxItems {
-			jobRun, err := jobRunsIter.Next(context.Background())
-			if err != nil {
-				response.Error = err
-				return response
-			}
-
-			allJobs = append(allJobs, jobRun)
-			currentItems++
-		} else {
-			break
-		}
+	if err != nil {
+		response.Error = err
+		return response
 	}
 
 	// sort rows ascending by StartTime
-	slices.SortFunc(allJobs, func(i, j jobs.BaseRun) int {
+	slices.SortFunc(jobRuns, func(i, j jobs.BaseRun) int {
 		return cmp.Compare(i.StartTime, j.StartTime)
 	})
 
-	for _, run := range allJobs {
+	for _, run := range jobRuns {
 		frame.AppendRow(
 			time.UnixMilli(run.StartTime),
 			time.UnixMilli(run.EndTime),
@@ -218,6 +210,11 @@ func (d *Datasource) queryJobRuns(ctx context.Context, pCtx backend.PluginContex
 
 	response.Frames = append(response.Frames, frame)
 	return response
+}
+
+func fetchJobRuns(ctx context.Context, client DatabricksJobsService, request jobs.ListRunsRequest, maxItems int) ([]jobs.BaseRun, error) {
+	iter := client.ListRuns(ctx, request)
+	return fetchWithLimit(ctx, iter, maxItems)
 }
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
