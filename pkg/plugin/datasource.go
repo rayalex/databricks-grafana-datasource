@@ -24,6 +24,7 @@ var (
 
 const (
 	resourceTypeJobRuns         = "job_runs"
+	resourceTypePipelines       = "pipelines"
 	resourceTypePipelineUpdates = "pipeline_updates"
 )
 
@@ -84,6 +85,8 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 	switch qm.ResourceType {
 	case resourceTypeJobRuns:
 		return d.queryJobRuns(ctx, pCtx, query, qm)
+	case resourceTypePipelines:
+		return d.queryPipelines(ctx, pCtx, query, qm)
 	default:
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("unknown resource kind: %s", qm.ResourceType))
 	}

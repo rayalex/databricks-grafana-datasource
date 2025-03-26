@@ -10,13 +10,17 @@ export const DEFAULT_QUERY: Partial<MyQuery> = {
   resourceType: "job_runs",
 };
 
-export type ResourceParams = JobRunQueryParams;
+export type ResourceParams = JobRunQueryParams | PipelineQueryParams;
 
 export interface JobRunQueryParams { 
   jobId?: string;
   activeOnly?: boolean;
   completedOnly?: boolean;
   runType?: "JOB_RUN" | "WORKFLOW_RUN" | "SUBMIT_RUN";
+}
+
+export interface PipelineQueryParams {
+  filter?: string;
 }
 
 /**
