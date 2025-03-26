@@ -105,9 +105,49 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 	}
 }
 
-func (d *Datasource) queryJobRuns(ctx context.Context, pCtx backend.PluginContext, query backend.DataQuery, qm queryModel) backend.DataResponse {
-	var response backend.DataResponse
+func parseJobRunParams(query backend.DataQuery, qm queryModel) (jobRunParams, error) {
+	var params jobRunParams
+	if qm.ResourceParams != nil {
+		if err := json.Unmarshal(qm.ResourceParams, &params); err != nil {
+			return params, fmt.Errorf("failed to unmarshal query params: %v", err)
+		}
+	}
 
+	return params, nil
+}
+
+func buildListRunsRequest(params jobRunParams, query backend.DataQuery) (jobs.ListRunsRequest, error) {
+	req := jobs.ListRunsRequest{
+		Limit:         25, // 25 is the max limit for this API - per page
+		ActiveOnly:    params.ActiveOnly,
+		CompletedOnly: params.CompletedOnly,
+	}
+
+	// apply job id filter, if set
+	if params.JobID != "" {
+		jobId, err := strconv.ParseInt(params.JobID, 10, 64)
+		if err != nil {
+			return req, err
+		}
+
+		req.JobId = jobId
+	}
+
+	// apply time range filter, if set
+	if !query.TimeRange.From.IsZero() && !query.TimeRange.To.IsZero() {
+		req.StartTimeFrom = query.TimeRange.From.UnixMilli()
+		req.StartTimeTo = query.TimeRange.To.UnixMilli()
+	}
+
+	// apply run type filter
+	if params.RunType != "" {
+		req.RunType = jobs.RunType(params.RunType)
+	}
+
+	return req, nil
+}
+
+func builtJobRunFrame(runs []jobs.BaseRun) *data.Frame {
 	frame := data.NewFrame("Databricks Job Runs",
 		data.NewField("Start Time", nil, []time.Time{}),
 		data.NewField("End Time", nil, []time.Time{}),
@@ -122,51 +162,44 @@ func (d *Datasource) queryJobRuns(ctx context.Context, pCtx backend.PluginContex
 		data.NewField("Run URL", nil, []string{}),
 	)
 
-	// unmarshall the query params
-	var params jobRunParams
-	if qm.ResourceParams != nil {
-		if err := json.Unmarshal(qm.ResourceParams, &params); err != nil {
-			log.DefaultLogger.Error("failed to unmarshal query params", "error", err)
-			return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to unmarshal query params: %v", err))
-		}
+	// sort rows ascending by StartTime
+	slices.SortFunc(runs, func(i, j jobs.BaseRun) int {
+		return cmp.Compare(i.StartTime, j.StartTime)
+	})
+
+	for _, run := range runs {
+		frame.AppendRow(
+			time.UnixMilli(run.StartTime),
+			time.UnixMilli(run.EndTime),
+			fmt.Sprintf("%d", run.JobId),
+			fmt.Sprintf("%d", run.RunId),
+			run.RunName,
+			run.Description,
+			int32(run.AttemptNumber),
+			string(run.Status.State),
+			run.QueueDuration,
+			run.RunDuration,
+			run.RunPageUrl,
+		)
 	}
 
-	// TODO: Implement the query filtering
+	return frame
+}
+
+func (d *Datasource) queryJobRuns(ctx context.Context, pCtx backend.PluginContext, query backend.DataQuery, qm queryModel) backend.DataResponse {
+	params, err := parseJobRunParams(query, qm)
+	if err != nil {
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to parse query params: %v", err))
+	}
+
 	w, err := d.getDatabricksClient(ctx, pCtx)
 	if err != nil {
-		response.Error = err
-		return response
+		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("failed to get databricks client: %v", err))
 	}
 
-	// fetch the initial set of job runs
-	request := jobs.ListRunsRequest{
-		Limit: 25, // 25 is the max limit for this API - per page
-	}
-
-	// apply JobId filter, if set
-	if params.JobID != "" {
-		jobId, err := strconv.ParseInt(params.JobID, 10, 64)
-		if err != nil {
-			response.Error = err
-			return response
-		}
-
-		request.JobId = jobId
-	}
-
-	// apply time range filter, if set
-	if !query.TimeRange.From.IsZero() && !query.TimeRange.To.IsZero() {
-		request.StartTimeFrom = query.TimeRange.From.UnixMilli()
-		request.StartTimeTo = query.TimeRange.To.UnixMilli()
-	}
-
-	// apply status filters
-	request.ActiveOnly = params.ActiveOnly
-	request.CompletedOnly = params.CompletedOnly
-
-	// Apply run type filter
-	if params.RunType != "" {
-		request.RunType = jobs.RunType(params.RunType)
+	request, err := buildListRunsRequest(params, query)
+	if err != nil {
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to build list runs request: %v", err))
 	}
 
 	log.DefaultLogger.Info("Querying job runs",
@@ -183,31 +216,11 @@ func (d *Datasource) queryJobRuns(ctx context.Context, pCtx backend.PluginContex
 	jobRuns, err := fetchJobRuns(ctx, jobsService, request, jobRunPageLimit)
 
 	if err != nil {
-		response.Error = err
-		return response
+		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("failed to fetch job runs: %v", err))
 	}
 
-	// sort rows ascending by StartTime
-	slices.SortFunc(jobRuns, func(i, j jobs.BaseRun) int {
-		return cmp.Compare(i.StartTime, j.StartTime)
-	})
-
-	for _, run := range jobRuns {
-		frame.AppendRow(
-			time.UnixMilli(run.StartTime),
-			time.UnixMilli(run.EndTime),
-			fmt.Sprintf("%d", run.JobId),
-			fmt.Sprintf("%d", run.RunId),
-			run.RunName,
-			run.Description,
-			int32(run.AttemptNumber),
-			string(run.Status.State),
-			run.QueueDuration,
-			run.RunDuration,
-			run.RunPageUrl,
-		)
-	}
-
+	var response backend.DataResponse
+	frame := builtJobRunFrame(jobRuns)
 	response.Frames = append(response.Frames, frame)
 	return response
 }
