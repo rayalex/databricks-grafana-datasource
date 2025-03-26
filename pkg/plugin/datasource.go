@@ -147,7 +147,7 @@ func buildListRunsRequest(params jobRunParams, query backend.DataQuery) (jobs.Li
 	return req, nil
 }
 
-func builtJobRunFrame(runs []jobs.BaseRun) *data.Frame {
+func buildJobRunFrame(runs []jobs.BaseRun) *data.Frame {
 	frame := data.NewFrame("Databricks Job Runs",
 		data.NewField("Start Time", nil, []time.Time{}),
 		data.NewField("End Time", nil, []time.Time{}),
@@ -220,7 +220,7 @@ func (d *Datasource) queryJobRuns(ctx context.Context, pCtx backend.PluginContex
 	}
 
 	var response backend.DataResponse
-	frame := builtJobRunFrame(jobRuns)
+	frame := buildJobRunFrame(jobRuns)
 	response.Frames = append(response.Frames, frame)
 	return response
 }
