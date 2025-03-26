@@ -79,7 +79,7 @@ func buildJobRunFrame(runs []jobs.BaseRun) *data.Frame {
 		data.NewField("Run URL", nil, []string{}),
 	)
 
-	// sort rows ascending by StartTime
+	// sort results ascending by StartTime
 	slices.SortFunc(runs, func(i, j jobs.BaseRun) int {
 		return cmp.Compare(i.StartTime, j.StartTime)
 	})

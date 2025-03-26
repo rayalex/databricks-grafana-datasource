@@ -2,7 +2,7 @@ import React from 'react';
 import { InlineField, Select, Stack } from '@grafana/ui';
 import { QueryEditorProps, SelectableValue } from '@grafana/data';
 import { DataSource } from '../datasource';
-import { JobRunQueryParams, MyDataSourceOptions, MyQuery } from '../types';
+import { JobRunQueryParams, MyDataSourceOptions, MyQuery, PipelineQueryParams } from '../types';
 import { JobRunsEditor } from './JobRunsEditor';
 import PipelinesEditor from './PipelinesEditor';
 
@@ -32,7 +32,11 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
 
       case 'pipelines':
         return (
-          <PipelinesEditor/>
+          <PipelinesEditor
+            resourceParams={resourceParams as PipelineQueryParams}
+            onChange={handleQueryChange}
+            onRunQuery={onRunQuery}
+          />
         );
 
       default:
