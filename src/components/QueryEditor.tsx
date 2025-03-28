@@ -51,7 +51,6 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
           options={[
             { label: 'Job Runs', value: 'job_runs' },
             { label: 'Pipelines', value: 'pipelines' },
-            { label: 'Pipeline Updates', value: 'pipeline_updates' },
           ]}
           value={query.resourceType}
           onChange={onResourceTypeChange}

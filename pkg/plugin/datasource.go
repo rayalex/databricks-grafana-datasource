@@ -82,6 +82,8 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
 
+	// TODO: See if it makes sense to fetch the results via SQL statement from system.lakeflow and other tables instead (for perf reasons)
+	// TODO: Make limits configurable by the client
 	switch qm.ResourceType {
 	case resourceTypeJobRuns:
 		return d.queryJobRuns(ctx, pCtx, query, qm)
