@@ -4,7 +4,10 @@ go 1.23.5
 
 toolchain go1.23.7
 
-require github.com/grafana/grafana-plugin-sdk-go v0.274.0
+require (
+	github.com/databricks/databricks-sdk-go v0.60.0
+	github.com/grafana/grafana-plugin-sdk-go v0.274.0
+)
 
 require (
 	cloud.google.com/go/auth v0.4.2 // indirect
@@ -18,7 +21,6 @@ require (
 	github.com/cheekybits/genny v1.0.0 // indirect
 	github.com/chromedp/cdproto v0.0.0-20220208224320-6efb837e6bc2 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.5 // indirect
-	github.com/databricks/databricks-sdk-go v0.60.0 // indirect
 	github.com/elazarl/goproxy v1.7.2 // indirect
 	github.com/fatih/color v1.15.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
