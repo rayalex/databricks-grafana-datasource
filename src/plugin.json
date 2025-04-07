@@ -17,7 +17,12 @@
       "large": "img/logo-lg.png"
     },
     "links": [],
-    "screenshots": [],
+    "screenshots": [
+      {
+        "name": "Databricks Jobs",
+        "path": "img/screenshot.jpg"
+      }
+    ],
     "version": "%VERSION%",
     "updated": "%TODAY%"
   },
