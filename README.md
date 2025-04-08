@@ -2,6 +2,8 @@
 
 A Grafana plugin for visualizing Databricks resources directly in your dashboards. Query and visualize information about job runs and pipelines from your Databricks workspace.
 
+![screenshot](src/img/screenshot.jpg)
+
 ## Features
 
 - Job Runs: Visualize your Databricks job executions, including run status, duration, and other metrics
