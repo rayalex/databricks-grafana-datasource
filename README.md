@@ -1,6 +1,6 @@
 # Grafana Databricks Observability Plugin
 
-A Grafana plugin for visualizing Databricks resources directly in your dashboards. Query and visualize information about job runs and pipelines from your Databricks workspace.
+A Grafana plugin for monitoring and visualizing Databricks Jobs, DLTs and Pipelines directly in your Grafana dashboards.
 
 ![screenshot](src/img/screenshot.jpg)
 
